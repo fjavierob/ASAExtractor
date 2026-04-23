@@ -4,7 +4,10 @@ Tested against ASA 9.16(4)
 """
 
 import json
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class ASAExtractor:
@@ -21,6 +24,8 @@ class ASAExtractor:
             ValueError: If the file is empty or does not appear to be an ASA config.
             PermissionError: If the file cannot be read due to OS permissions.
         """
+        logger.info(f"Initializing ASAExtractor with file: '{filename}'")
+
         if not os.path.exists(filename):
             raise FileNotFoundError(f"Config file not found: '{filename}'")
 
@@ -39,25 +44,26 @@ class ASAExtractor:
         # Lightweight ASA sanity check — at least one of these should appear
         # in any real ASA config. Avoids silently parsing a wrong file.
         asa_indicators = {"access-list", "interface", "nameif", "object", "access-group"}
-        joined = " ".join(self.lines[:300])  # check only the first 300 lines for speed
+        joined = " ".join(self.lines[:200])
         if not any(indicator in joined for indicator in asa_indicators):
             raise ValueError(
                 f"File does not appear to be a Cisco ASA configuration: '{filename}'"
             )
 
         self.filename = filename
+        logger.info(f"Successfully loaded {len(self.lines)} lines from '{filename}'")
 
         # Extracted and normalized data — populated by extract_* methods
-        self.protocol_objects: list[dict]   = []
-        self.protocol_groups: list[dict]    = []
-        self.network_objects: list[dict]    = []
-        self.network_groups: list[dict]     = []
-        self.service_objects: list[dict]    = []
-        self.service_groups: list[dict]     = []
-        self.firewall_rules: list[dict]     = []
+        self.protocol_objects: list[dict] = []
+        self.protocol_groups: list[dict] = []
+        self.network_objects: list[dict] = []
+        self.network_groups: list[dict] = []
+        self.service_objects: list[dict] = []
+        self.service_groups: list[dict] = []
+        self.firewall_rules: list[dict] = []
 
     # ------------------------------------------------------------------
-    # Extraction methods
+    # Extraction methods (to be implemented in subsequent steps)
     # ------------------------------------------------------------------
 
     def extract_protocols(self):
@@ -103,61 +109,3 @@ class ASAExtractor:
         One file per object/rule type.
         """
         raise NotImplementedError
-
-
-# ------------------------------------------------------------------
-# Quick smoke test
-# ------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import tempfile
-
-    SAMPLE = """\
-interface GigabitEthernet0/0
- nameif outside
- security-level 0
-!
-object network WEB_SERVER
- host 192.168.15.20
-object-group network INTERNAL_NETS
- network-object 192.168.0.0 255.255.0.0
-access-list outside extended permit tcp any4 host 192.168.15.20 eq 443
-access-group outside in interface outside
-"""
-    # Write to a temp file and instantiate
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".cfg", delete=False) as tf:
-        tf.write(SAMPLE)
-        tmp_path = tf.name
-
-    try:
-        asa = ASAExtractor(tmp_path)
-        print(f"OK — loaded {len(asa.lines)} lines from '{asa.filename}'")
-        print(f"Attributes: protocol_objects={asa.protocol_objects}, "
-              f"network_objects={asa.network_objects}, "
-              f"firewall_rules={asa.firewall_rules}")
-
-        # Test FileNotFoundError
-        try:
-            ASAExtractor("/nonexistent/path/config.cfg")
-        except FileNotFoundError as e:
-            print(f"OK — FileNotFoundError: {e}")
-
-        # Test empty file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cfg", delete=False) as ef:
-            empty_path = ef.name
-        try:
-            ASAExtractor(empty_path)
-        except ValueError as e:
-            print(f"OK — ValueError (empty): {e}")
-
-        # Test wrong file content
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cfg", delete=False) as wf:
-            wf.write("hello world\nthis is not a config\n")
-            wrong_path = wf.name
-        try:
-            ASAExtractor(wrong_path)
-        except ValueError as e:
-            print(f"OK — ValueError (wrong content): {e}")
-
-    finally:
-        os.unlink(tmp_path)
