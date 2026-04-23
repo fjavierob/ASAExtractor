@@ -12,3 +12,4 @@ logging.basicConfig(
 )
 
 ASA = ASAExtractor("config.cfg")
+ASA.extract_protocols()
